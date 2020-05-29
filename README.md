@@ -5,10 +5,10 @@
 [![Discord Chat](https://img.shields.io/discord/697002823123992617)](https://discord.gg/HZEbkeQ)
 
 **cassowary** is a low-level Go implementation of the popular [Cassowary](https://constraints.cs.washington.edu/cassowary/cassowary-tr.pdf) constraint solving algorithm.
+ 
+**cassowary** allows you to efficiently and incrementally describe partially-conflicting required and preferntial constraints over a set of variables, and solve for a solution against them that is legitimately locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
 
-**cassowary** allows you to incrementally describe preferences and requirements of a set of partially-conflicting constraints, and solve for a solution against them that is legitimate locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
-
-**cassowary** is popularly used in Apple's Auto Layout and Visual Format Language, and in Grid Style Sheets.
+It is popularly used in Apple's Auto Layout and Visual Format Language, and in Grid Style Sheets.
 
 ## Description
 
