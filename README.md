@@ -24,13 +24,13 @@ l := s.New()
 m := s.New()
 r := s.New()
 
-// a: r + l - 2m == 0
-// b: r - l >= 100
-// c: l >= 0
+// a = r + l - 2m == 0
+// b = r - l >= 100
+// c = l >= 0
 
-a := cassowary.Constraint{op: EQ, expr: cassowary.NewExpr(0, r.Term(1.0), l.Term(1.0), m.Term(-2.0))}
-b := cassowary.Constraint{op: GTE, expr: cassowary.NewExpr(-100, r.Term(1.0), l.Term(-1.0))}
-c := cassowary.Constraint{op: GTE, expr: cassowary.NewExpr(0, l.Term(1.0))}
+a := cassowary.NewConstraint(cassowary.EQ, 0, r.T(1.0), l.T(1.0), m.T(-2.0))
+b := cassowary.NewConstraint(cassowary.GTE, -100, r.T(1.0), l.T(-1.0))
+c := cassowary.NewConstraint(cassowary.GTE, 0, l.T(1.0))
 
 _, err := s.AddConstraint(a)
 require.NoError(t, err)

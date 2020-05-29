@@ -31,7 +31,8 @@ type Solver struct {
 
 	infeasible []SymbolID
 
-	objective Expr
+	objective  Expr
+	artificial Expr
 }
 
 func NewSolver() *Solver {
@@ -59,7 +60,7 @@ func (s *Solver) Edit(id SymbolID, priority Priority) error {
 	if priority == Required {
 		return errors.New("editable variables are not allowed to be required")
 	}
-	constraint := Constraint{op: EQ, expr: NewExpr(0.0, id.Term(1.0))}
+	constraint := Constraint{op: EQ, expr: NewExpr(0.0, id.T(1.0))}
 	marker, err := s.AddConstraintWithPriority(priority, constraint)
 	if err != nil {
 		return err
@@ -68,16 +69,18 @@ func (s *Solver) Edit(id SymbolID, priority Priority) error {
 	return nil
 }
 
-func (s *Solver) Suggest(id SymbolID, val float64) {
+func (s *Solver) Suggest(id SymbolID, val float64) error {
 	edit, ok := s.edits[id]
 	if !ok {
-		return
+		return fmt.Errorf("symbol id %d is not registered as editable", id)
 	}
 
 	defer s.optimizeDualObjective()
 
 	delta := val - edit.val
+
 	edit.val = val
+	s.edits[id] = edit
 
 	row, exists := s.rows[edit.tag.marker]
 	if exists {
@@ -86,7 +89,7 @@ func (s *Solver) Suggest(id SymbolID, val float64) {
 			s.infeasible = append(s.infeasible, edit.tag.marker)
 		}
 		s.rows[edit.tag.marker] = row
-		return
+		return nil
 	}
 
 	row, exists = s.rows[edit.tag.other]
@@ -96,7 +99,7 @@ func (s *Solver) Suggest(id SymbolID, val float64) {
 			s.infeasible = append(s.infeasible, edit.tag.other)
 		}
 		s.rows[edit.tag.other] = row
-		return
+		return nil
 	}
 
 	for symbol := range s.rows {
@@ -125,6 +128,8 @@ func (s *Solver) Suggest(id SymbolID, val float64) {
 
 		s.infeasible = append(s.infeasible, symbol)
 	}
+
+	return nil
 }
 
 func (s *Solver) new(symbol Symbol) SymbolID {
@@ -147,6 +152,7 @@ func (s *Solver) substitute(id SymbolID, expr Expr) {
 		s.infeasible = append(s.infeasible, symbol)
 	}
 	s.objective.substitute(id, expr)
+	s.artificial.substitute(id, expr)
 }
 
 func (s *Solver) AddConstraint(cell Constraint) (SymbolID, error) {
@@ -223,21 +229,85 @@ func (s *Solver) AddConstraintWithPriority(priority Priority, cell Constraint) (
 		return InvalidSymbolID, err
 	}
 
-	if subject == -1 { // TODO(kenta): add with artificial variable
-		panic("TODO")
+	if subject == -1 {
+		err := s.optimizeAgainstRow(row)
+		if err != nil {
+			return tag.marker, err
+		}
+	} else {
+		// 1. solve for the subject variable
+		// 2. substitute the solution into our tableau
+
+		row.cell.expr.solveFor(subject)
+
+		s.substitute(subject, row.cell.expr)
+		s.rows[subject] = row
 	}
 
-	// 1. solve for the subject variable
-	// 2. substitute the solution into our tableau
-
-	row.cell.expr.solveFor(subject)
-
-	s.substitute(subject, row.cell.expr)
-
 	s.tags[tag.marker] = tag
-	s.rows[subject] = row
 
-	return tag.marker, s.optimizeAgainst(s.objective)
+	return tag.marker, s.optimizeAgainst(&s.objective)
+}
+
+func (s *Solver) optimizeAgainstRow(row Row) error {
+	id := s.new(Slack)
+
+	s.rows[id] = row
+	s.artificial = row.cell.expr
+
+	err := s.optimizeAgainst(&s.artificial)
+	if err != nil {
+		return err
+	}
+
+	success := zero(s.artificial.constant)
+	s.artificial = NewExpr(0.0)
+
+	artificial, ok := s.rows[id]
+	if ok {
+		delete(s.rows, id)
+
+		if len(artificial.cell.expr.terms) == 0 {
+			return nil
+		}
+
+		entry := InvalidSymbolID
+		for _, term := range artificial.cell.expr.terms {
+			if !s.symbols[term.id].Restricted() {
+				continue
+			}
+			entry = term.id
+			break
+		}
+
+		if entry == InvalidSymbolID {
+			return errors.New("unsatisfiable")
+		}
+
+		artificial.cell.expr.solveForSymbols(id, entry)
+
+		s.substitute(entry, artificial.cell.expr)
+		s.rows[entry] = artificial
+	}
+
+	for symbol, row := range s.rows {
+		idx := row.cell.expr.find(id)
+		if idx == -1 {
+			continue
+		}
+		row.cell.expr.delete(idx)
+		s.rows[symbol] = row
+	}
+
+	idx := s.objective.find(id)
+	if idx != -1 {
+		s.objective.delete(idx)
+	}
+
+	if !success {
+		return errors.New("unsatisfiable")
+	}
+	return nil
 }
 
 // findSubject finds a subject variable to pivot on. It must either:
@@ -278,7 +348,7 @@ func (s *Solver) findSubject(row Row, tag Tag) (SymbolID, error) {
 	return tag.marker, nil
 }
 
-func (s *Solver) optimizeAgainst(objective Expr) error {
+func (s *Solver) optimizeAgainst(objective *Expr) error {
 	for {
 		entry := InvalidSymbolID
 		for _, term := range objective.terms {
@@ -312,10 +382,6 @@ func (s *Solver) optimizeAgainst(objective Expr) error {
 			if r < ratio {
 				ratio, exit = r, symbol
 			}
-		}
-
-		if exit == InvalidSymbolID {
-			panic("this should not happen")
 		}
 
 		row := s.rows[exit]
@@ -356,10 +422,6 @@ func (s *Solver) optimizeDualObjective() {
 			if r < ratio {
 				entry, ratio = term.id, r
 			}
-		}
-
-		if entry == InvalidSymbolID {
-			panic("this definitely should not happen")
 		}
 
 		row.cell.expr.solveForSymbols(exit, entry)

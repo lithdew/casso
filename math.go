@@ -4,7 +4,11 @@ type SymbolID int
 
 const InvalidSymbolID SymbolID = -1
 
-func (id SymbolID) Term(coeff float64) Term { return Term{coeff: coeff, id: id} }
+func (id SymbolID) T(coeff float64) Term { return Term{coeff: coeff, id: id} }
+
+func (id SymbolID) EQ(val float64) Constraint  { return NewConstraint(EQ, -val, id.T(1.0)) }
+func (id SymbolID) GTE(val float64) Constraint { return NewConstraint(GTE, -val, id.T(1.0)) }
+func (id SymbolID) LTE(val float64) Constraint { return NewConstraint(LTE, -val, id.T(1.0)) }
 
 type Priority int
 
@@ -62,6 +66,10 @@ func (s Symbol) String() string   { return SymbolTable[s] }
 type Constraint struct {
 	op   Op
 	expr Expr
+}
+
+func NewConstraint(op Op, constant float64, terms ...Term) Constraint {
+	return Constraint{op: op, expr: NewExpr(constant, terms...)}
 }
 
 type Term struct {
