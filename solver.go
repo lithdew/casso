@@ -12,8 +12,8 @@ type Tag struct {
 }
 
 type Row struct {
-	priority Priority // remove row, add tagID (int) and tag
-	cell     Constraint
+	prio Priority
+	cell Constraint
 }
 
 type Edit struct {
@@ -162,7 +162,7 @@ func (s *Solver) AddConstraint(cell Constraint) (SymbolID, error) {
 func (s *Solver) AddConstraintWithPriority(priority Priority, cell Constraint) (SymbolID, error) {
 	tag := Tag{marker: InvalidSymbolID, other: InvalidSymbolID}
 
-	row := Row{priority: priority, cell: cell}
+	row := Row{prio: priority, cell: cell}
 	row.cell.expr.terms = make([]Term, 0, len(row.cell.expr.terms))
 
 	// 1. filter away terms with coefficients that are zero
