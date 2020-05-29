@@ -1,12 +1,12 @@
-# cassowary
+# casso
 
 [![MIT License](https://img.shields.io/apm/l/atomic-design-ui.svg?)](LICENSE)
-[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/lithdew/cassowary)
+[![go.dev reference](https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square)](https://pkg.go.dev/github.com/lithdew/casso)
 [![Discord Chat](https://img.shields.io/discord/697002823123992617)](https://discord.gg/HZEbkeQ)
 
-**cassowary** is a low-level Go implementation of the popular [Cassowary](https://constraints.cs.washington.edu/cassowary/cassowary-tr.pdf) constraint solving algorithm.
+**casso** is a low-level Go implementation of the popular [Cassowary](https://constraints.cs.washington.edu/cassowary/cassowary-tr.pdf) constraint solving algorithm.
  
-**cassowary** allows you to efficiently and incrementally describe partially-conflicting required/preferential constraints over a set of variables, and solve for a solution against them that is legitimately locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
+**casso** allows you to efficiently and incrementally describe partially-conflicting required/preferential constraints over a set of variables, and solve for a solution against them that is legitimately locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
 
 It is popularly used in Apple's [Auto Layout Visual Format Language](https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/AutolayoutPG/VisualFormatLanguage.html), and in [Grid Style Sheets](https://gss.github.io/guides/ccss).
 
@@ -19,31 +19,66 @@ Paper written by Greg J. Badros, and Alan Borning. For more information, please 
 ## Example
 
 ```go
-s := cassowary.NewSolver()
-l := s.New()
-m := s.New()
-r := s.New()
+s := casso.NewSolver()
 
-// a = r + l - 2m == 0
-// b = r - l >= 100
-// c = l >= 0
+containerWidth := s.New()
 
-a := cassowary.NewConstraint(cassowary.EQ, 0, r.T(1.0), l.T(1.0), m.T(-2.0))
-b := cassowary.NewConstraint(cassowary.GTE, -100, r.T(1.0), l.T(-1.0))
-c := cassowary.NewConstraint(cassowary.GTE, 0, l.T(1.0))
+childX := s.New()
+childCompWidth := s.New()
 
-_, err := s.AddConstraint(a)
+child2X := s.New()
+child2CompWidth := s.New()
+
+// c1: childX == (50.0 / 1024) * containerWidth
+// c2: childCompWidth == (200.0 / 1024) * containerWidth
+// c3: childCompWith >= 200.0
+// c4: child2X - childX - childCompWidth == 50
+// c5: child2CompWidth == 50 + containerWidth + child2X
+
+c1 := casso.NewConstraint(casso.EQ, 0, childX.T(1.0), containerWidth.T(-50.0/1024))
+c2 := casso.NewConstraint(casso.EQ, 0, childCompWidth.T(1.0), containerWidth.T(-200.0/1024))
+c3 := casso.NewConstraint(casso.GTE, -200, childCompWidth.T(1.0))
+c4 := casso.NewConstraint(casso.EQ, -50, child2X.T(1.0), childX.T(-1.0), childCompWidth.T(-1.0))
+c5 := casso.NewConstraint(casso.EQ, 50, child2CompWidth.T(1.0), containerWidth.T(-1.0), child2X.T(1.0))
+
+// Mark 'containerWidth' as an editable variable with strong precedence.
+// Suggest 'containerWidth' to take on the value 2048.
+
+require.NoError(t, s.Edit(containerWidth, casso.Strong))
+require.NoError(t, s.Suggest(containerWidth, 2048))
+
+// Add constraints to the solver.
+
+_, err := s.AddConstraint(c1)
 require.NoError(t, err)
 
-_, err = s.AddConstraint(b)
+_, err = s.AddConstraintWithPriority(casso.Weak, c2)
 require.NoError(t, err)
 
-_, err = s.AddConstraint(c)
+_, err = s.AddConstraintWithPriority(casso.Strong, c3)
 require.NoError(t, err)
 
-require.EqualValues(t, 0, s.Val(l))
-require.EqualValues(t, 50, s.Val(m))
-require.EqualValues(t, 100, s.Val(r))
+_, err = s.AddConstraint(c4)
+require.NoError(t, err)
+
+_, err = s.AddConstraint(c5)
+require.NoError(t, err)
+
+// Grab computed values.
+
+require.EqualValues(t, 2048, s.Val(containerWidth))
+require.EqualValues(t, 400, s.Val(childCompWidth))
+require.EqualValues(t, 1448, s.Val(child2CompWidth))
+
+// Suggest 'containerWidth' to take on the value 500.
+
+require.NoError(t, s.Suggest(containerWidth, 500))
+
+// Grab computed values.
+
+require.EqualValues(t, 500, s.Val(containerWidth))
+require.EqualValues(t, 200, s.Val(childCompWidth))
+require.EqualValues(t, 175.5859375, s.Val(child2CompWidth))
 ```
 
 ## Benchmarks
@@ -55,6 +90,6 @@ model name : Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz
 $ go test -bench=. -benchtime=10s
 goos: linux
 goarch: amd64
-pkg: github.com/lithdew/cassowary
+pkg: github.com/lithdew/casso
 BenchmarkAddConstraint-8         4392736              2753 ns/op            1344 B/op         13 allocs/op
 ```

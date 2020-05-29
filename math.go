@@ -1,4 +1,4 @@
-package cassowary
+package casso
 
 type SymbolID int
 

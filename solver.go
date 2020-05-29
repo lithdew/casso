@@ -1,4 +1,4 @@
-package cassowary
+package casso
 
 import (
 	"errors"
