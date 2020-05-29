@@ -6,9 +6,9 @@
 
 **cassowary** is a low-level Go implementation of the popular [Cassowary](https://constraints.cs.washington.edu/cassowary/cassowary-tr.pdf) constraint solving algorithm.
  
-**cassowary** allows you to efficiently and incrementally describe partially-conflicting required and preferntial constraints over a set of variables, and solve for a solution against them that is legitimately locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
+**cassowary** allows you to efficiently and incrementally describe partially-conflicting required/preferential constraints over a set of variables, and solve for a solution against them that is legitimately locally-error-better much like the [simplex algorithm](https://en.wikipedia.org/wiki/Simplex_algorithm).
 
-It is popularly used in Apple's Auto Layout and Visual Format Language, and in Grid Style Sheets.
+It is popularly used in Apple's [Auto Layout Visual Format Language](https://developer.apple.com/library/archive/documentation/UserExperience/Conceptual/AutolayoutPG/VisualFormatLanguage.html), and in [Grid Style Sheets](https://gss.github.io/guides/ccss).
 
 ## Description
 
