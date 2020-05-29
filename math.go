@@ -103,10 +103,15 @@ func (c *Expr) delete(idx int) {
 func (c *Expr) addSymbol(coeff float64, id SymbolID) {
 	idx := c.find(id)
 	if idx == -1 {
-		c.terms = append(c.terms, Term{coeff: coeff, id: id})
+		if !zero(coeff) {
+			c.terms = append(c.terms, Term{coeff: coeff, id: id})
+		}
 		return
 	}
 	c.terms[idx].coeff += coeff
+	if zero(c.terms[idx].coeff) {
+		c.delete(idx)
+	}
 }
 
 func (c *Expr) addExpr(coeff float64, other Expr) {

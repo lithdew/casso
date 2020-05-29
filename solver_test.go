@@ -30,6 +30,24 @@ func TestConstraint(t *testing.T) {
 	require.EqualValues(t, 100, s.Val(r))
 }
 
+func TestRemoveConstraint(t *testing.T) {
+	s := casso.NewSolver()
+	l := s.New()
+	r := s.New()
+
+	c1 := casso.NewConstraint(casso.GTE, -200, r.T(1), l.T(-1))
+	c2 := casso.NewConstraint(casso.GTE, 0, r.T(1), l.T(-1))
+
+	c1t, err := s.AddConstraint(c1)
+	require.NoError(t, err)
+
+	c2t, err := s.AddConstraint(c2)
+	require.NoError(t, err)
+
+	require.NoError(t, s.RemoveConstraint(c1t))
+	require.NoError(t, s.RemoveConstraint(c2t))
+}
+
 func TestEditableConstraint(t *testing.T) {
 	s := casso.NewSolver()
 	l := s.New()
