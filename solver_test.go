@@ -94,6 +94,60 @@ func TestConstraintRequiringArtificialVariable(t *testing.T) {
 	require.EqualValues(t, 100, s.Val(container))
 }
 
+func TestPaddingUI(t *testing.T) {
+	s := casso.NewSolver()
+
+	sw := s.New() // screen width
+	sh := s.New() // screen height
+
+	padding := s.New() // padding
+
+	require.NoError(t, s.Edit(sw, casso.Strong))
+	require.NoError(t, s.Edit(sh, casso.Strong))
+	require.NoError(t, s.Edit(padding, casso.Strong))
+
+	require.NoError(t, s.Suggest(sw, 800))
+	require.NoError(t, s.Suggest(sh, 600))
+	require.NoError(t, s.Suggest(padding, 30))
+
+	r := func(c casso.Constraint) {
+		_, err := s.AddConstraint(c)
+		require.NoError(t, err)
+	}
+
+	x := s.New()
+	y := s.New()
+	w := s.New()
+	h := s.New()
+
+	// x >= padding
+	// x + width + padding <= screen_width - 1
+	// y >= padding
+	// y + height + padding <= screen_height - 1
+
+	c1 := casso.NewConstraint(casso.GTE, 0, x.T(1), padding.T(-1))
+	c2 := casso.NewConstraint(casso.LTE, 1, x.T(1), w.T(1), padding.T(1), sw.T(-1))
+	c3 := casso.NewConstraint(casso.GTE, 0, y.T(1), padding.T(-1))
+	c4 := casso.NewConstraint(casso.LTE, 1, y.T(1), h.T(1), padding.T(1), sh.T(-1))
+
+	r(c1)
+	r(c2)
+	r(c3)
+	r(c4)
+
+	require.EqualValues(t, 30, s.Val(x))
+	require.EqualValues(t, 30, s.Val(y))
+	require.EqualValues(t, 739, s.Val(w))
+	require.EqualValues(t, 539, s.Val(h))
+
+	require.NoError(t, s.Suggest(padding, 50))
+
+	require.EqualValues(t, 50, s.Val(x))
+	require.EqualValues(t, 50, s.Val(y))
+	require.EqualValues(t, 699, s.Val(w))
+	require.EqualValues(t, 499, s.Val(h))
+}
+
 func TestComplexConstraints(t *testing.T) {
 	s := casso.NewSolver()
 
