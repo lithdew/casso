@@ -21,10 +21,10 @@ var SymbolTable = [...]string{
 func (s SymbolKind) Restricted() bool { return s == Slack || s == Error }
 func (s SymbolKind) String() string   { return SymbolTable[s] }
 
-type Symbol uint32
+type Symbol uint64
 
 var (
-	count uint32
+	count uint64
 	zero  Symbol
 )
 
@@ -33,11 +33,11 @@ func New() Symbol {
 }
 
 func next(typ SymbolKind) Symbol {
-	return Symbol((atomic.AddUint32(&count, 1) & 0x3fffffff) | (uint32(typ) << 30))
+	return Symbol((atomic.AddUint64(&count, 1) & 0x3fffffffffffffff) | (uint64(typ) << 62))
 }
 
-func (sym Symbol) Kind() SymbolKind { return SymbolKind(sym >> 30) }
-func (sym Symbol) Zero() bool       { return sym&0x3fffffff == 0 }
+func (sym Symbol) Kind() SymbolKind { return SymbolKind(sym >> 62) }
+func (sym Symbol) Zero() bool       { return sym&0x3fffffffffffffff == 0 }
 func (sym Symbol) Restricted() bool { return !sym.Zero() && sym.Kind().Restricted() }
 func (sym Symbol) External() bool   { return !sym.Zero() && sym.Kind() == External }
 func (sym Symbol) Slack() bool      { return !sym.Zero() && sym.Kind() == Slack }
