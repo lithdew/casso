@@ -343,11 +343,9 @@ func (s *Solver) substitute(id Symbol, expr Expr) {
 		row := s.tabs[symbol]
 		row.expr.substitute(id, expr)
 		s.tabs[symbol] = row
-
 		if symbol.External() || row.expr.constant >= 0.0 {
 			continue
 		}
-
 		s.infeasible = append(s.infeasible, symbol)
 	}
 	s.objective.substitute(id, expr)
@@ -360,11 +358,10 @@ func (s *Solver) optimizeAgainst(objective *Expr) error {
 		exit := zero
 
 		for _, term := range objective.terms {
-			if term.id.Dummy() || term.coeff >= 0.0 {
-				continue
+			if !term.id.Dummy() && term.coeff < 0.0 {
+				entry = term.id
+				break
 			}
-			entry = term.id
-			break
 		}
 		if entry.Zero() {
 			return nil
@@ -403,8 +400,8 @@ func (s *Solver) optimizeAgainst(objective *Expr) error {
 func (s *Solver) augmentArtificialVariable(row Constraint) error {
 	art := next(Slack)
 
-	s.tabs[art] = row
-	s.artificial = row.expr
+	s.tabs[art] = row.clone()
+	s.artificial = row.expr.clone()
 
 	err := s.optimizeAgainst(&s.artificial)
 	if err != nil {
@@ -424,11 +421,10 @@ func (s *Solver) augmentArtificialVariable(row Constraint) error {
 
 		entry := zero
 		for _, term := range artificial.expr.terms {
-			if !term.id.Restricted() {
-				continue
+			if term.id.Restricted() {
+				entry = term.id
+				break
 			}
-			entry = term.id
-			break
 		}
 		if entry.Zero() {
 			return errors.New("unsatisfiable")

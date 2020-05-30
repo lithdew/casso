@@ -37,7 +37,7 @@ func next(typ SymbolKind) Symbol {
 }
 
 func (sym Symbol) Kind() SymbolKind { return SymbolKind(sym >> 62) }
-func (sym Symbol) Zero() bool       { return sym&0x3fffffffffffffff == 0 }
+func (sym Symbol) Zero() bool       { return sym == zero }
 func (sym Symbol) Restricted() bool { return !sym.Zero() && sym.Kind().Restricted() }
 func (sym Symbol) External() bool   { return !sym.Zero() && sym.Kind() == External }
 func (sym Symbol) Slack() bool      { return !sym.Zero() && sym.Kind() == Slack }
@@ -84,6 +84,11 @@ func NewConstraint(op Op, constant float64, terms ...Term) Constraint {
 	return Constraint{op: op, expr: NewExpr(constant, terms...)}
 }
 
+func (c Constraint) clone() Constraint {
+	res := Constraint{op: c.op, expr: c.expr.clone()}
+	return res
+}
+
 type Term struct {
 	coeff float64
 	id    Symbol
@@ -96,6 +101,12 @@ type Expr struct {
 
 func NewExpr(constant float64, terms ...Term) Expr {
 	return Expr{constant: constant, terms: terms}
+}
+
+func (c Expr) clone() Expr {
+	res := Expr{constant: c.constant, terms: make([]Term, len(c.terms))}
+	copy(res.terms, c.terms)
+	return res
 }
 
 func (c Expr) find(id Symbol) int {
@@ -151,6 +162,10 @@ func (c *Expr) solveFor(id Symbol) {
 
 	coeff := -1.0 / c.terms[idx].coeff
 	c.delete(idx)
+
+	if coeff == 1.0 {
+		return
+	}
 
 	c.constant *= coeff
 	for i := 0; i < len(c.terms); i++ {
