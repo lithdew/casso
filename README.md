@@ -31,7 +31,7 @@ child2CompWidth := casso.New()
 
 // c1: childX == (50.0 / 1024) * containerWidth
 // c2: childCompWidth == (200.0 / 1024) * containerWidth
-// c3: childCompWith >= 200.0
+// c3: childCompWidth >= 200.0
 // c4: child2X - childX - childCompWidth == 50
 // c5: child2CompWidth == 50 + containerWidth + child2X
 
