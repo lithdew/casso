@@ -91,5 +91,5 @@ $ go test -bench=. -benchtime=10s
 goos: linux
 goarch: amd64
 pkg: github.com/lithdew/casso
-BenchmarkAddConstraint-8         3694201              2892 ns/op            1208 B/op         16 allocs/op
+BenchmarkAddConstraint-8         7102137              2038 ns/op            1024 B/op         11 allocs/op
 ```

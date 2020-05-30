@@ -1,9 +1,11 @@
 package casso
 
-type symbolType int
+import "sync/atomic"
+
+type SymbolKind uint8
 
 const (
-	External symbolType = iota
+	External SymbolKind = iota
 	Slack
 	Error
 	Dummy
@@ -16,28 +18,37 @@ var SymbolTable = [...]string{
 	Dummy:    "Dummy",
 }
 
-func (s symbolType) Restricted() bool { return s == Slack || s == Error }
-func (s symbolType) String() string   { return SymbolTable[s] }
+func (s SymbolKind) Restricted() bool { return s == Slack || s == Error }
+func (s SymbolKind) String() string   { return SymbolTable[s] }
 
-type Symbol struct {
-	typ symbolType
+type Symbol uint32
+
+var (
+	count uint32
+	zero  Symbol
+)
+
+func New() Symbol {
+	return next(External)
 }
 
-func New() *Symbol {
-	return &Symbol{typ: External}
+func next(typ SymbolKind) Symbol {
+	return Symbol((atomic.AddUint32(&count, 1) & 0x3fffffff) | (uint32(typ) << 30))
 }
 
-func (id *Symbol) Restricted() bool { return id != nil && id.typ.Restricted() }
-func (id *Symbol) External() bool   { return id != nil && id.typ == External }
-func (id *Symbol) Slack() bool      { return id != nil && id.typ == Slack }
-func (id *Symbol) Error() bool      { return id != nil && id.typ == Error }
-func (id *Symbol) Dummy() bool      { return id != nil && id.typ == Dummy }
+func (sym Symbol) Kind() SymbolKind { return SymbolKind(sym >> 30) }
+func (sym Symbol) Zero() bool       { return sym&0x3fffffff == 0 }
+func (sym Symbol) Restricted() bool { return !sym.Zero() && sym.Kind().Restricted() }
+func (sym Symbol) External() bool   { return !sym.Zero() && sym.Kind() == External }
+func (sym Symbol) Slack() bool      { return !sym.Zero() && sym.Kind() == Slack }
+func (sym Symbol) Error() bool      { return !sym.Zero() && sym.Kind() == Error }
+func (sym Symbol) Dummy() bool      { return !sym.Zero() && sym.Kind() == Dummy }
 
-func (id *Symbol) T(coeff float64) Term { return Term{coeff: coeff, id: id} }
+func (sym Symbol) T(coeff float64) Term { return Term{coeff: coeff, id: sym} }
 
-func (id *Symbol) EQ(val float64) Constraint  { return NewConstraint(EQ, -val, id.T(1.0)) }
-func (id *Symbol) GTE(val float64) Constraint { return NewConstraint(GTE, -val, id.T(1.0)) }
-func (id *Symbol) LTE(val float64) Constraint { return NewConstraint(LTE, -val, id.T(1.0)) }
+func (sym Symbol) EQ(val float64) Constraint  { return NewConstraint(EQ, -val, sym.T(1.0)) }
+func (sym Symbol) GTE(val float64) Constraint { return NewConstraint(GTE, -val, sym.T(1.0)) }
+func (sym Symbol) LTE(val float64) Constraint { return NewConstraint(LTE, -val, sym.T(1.0)) }
 
 type Priority float64
 
@@ -48,7 +59,7 @@ const (
 	Required          = 1e3 * Strong
 )
 
-type Op int
+type Op uint8
 
 const (
 	EQ Op = iota
@@ -75,7 +86,7 @@ func NewConstraint(op Op, constant float64, terms ...Term) Constraint {
 
 type Term struct {
 	coeff float64
-	id    *Symbol
+	id    Symbol
 }
 
 type Expr struct {
@@ -87,7 +98,7 @@ func NewExpr(constant float64, terms ...Term) Expr {
 	return Expr{constant: constant, terms: terms}
 }
 
-func (c Expr) find(id *Symbol) int {
+func (c Expr) find(id Symbol) int {
 	for i := 0; i < len(c.terms); i++ {
 		if c.terms[i].id == id {
 			return i
@@ -101,16 +112,16 @@ func (c *Expr) delete(idx int) {
 	c.terms = c.terms[:len(c.terms)-1]
 }
 
-func (c *Expr) addSymbol(coeff float64, id *Symbol) {
+func (c *Expr) addSymbol(coeff float64, id Symbol) {
 	idx := c.find(id)
 	if idx == -1 {
-		if !zero(coeff) {
+		if !eqz(coeff) {
 			c.terms = append(c.terms, Term{coeff: coeff, id: id})
 		}
 		return
 	}
 	c.terms[idx].coeff += coeff
-	if zero(c.terms[idx].coeff) {
+	if eqz(c.terms[idx].coeff) {
 		c.delete(idx)
 	}
 }
@@ -129,7 +140,7 @@ func (c *Expr) negate() {
 	}
 }
 
-func (c *Expr) solveFor(id *Symbol) {
+func (c *Expr) solveFor(id Symbol) {
 	idx := c.find(id)
 	if idx == -1 {
 		return
@@ -147,12 +158,12 @@ func (c *Expr) solveFor(id *Symbol) {
 	}
 }
 
-func (c *Expr) solveForSymbols(lhs, rhs *Symbol) {
+func (c *Expr) solveForSymbols(lhs, rhs Symbol) {
 	c.addSymbol(-1.0, lhs)
 	c.solveFor(rhs)
 }
 
-func (c *Expr) substitute(id *Symbol, other Expr) {
+func (c *Expr) substitute(id Symbol, other Expr) {
 	idx := c.find(id)
 	if idx == -1 {
 		return
@@ -162,7 +173,7 @@ func (c *Expr) substitute(id *Symbol, other Expr) {
 	c.addExpr(coeff, other)
 }
 
-func zero(val float64) bool {
+func eqz(val float64) bool {
 	if val < 0 {
 		return -val < 1.0e-8
 	}
