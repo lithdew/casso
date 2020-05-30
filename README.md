@@ -16,6 +16,16 @@ It is popularly used in Apple's [Auto Layout Visual Format Language](https://dev
 
 Paper written by Greg J. Badros, and Alan Borning. For more information, please check out the paper [here](https://constraints.cs.washington.edu/cassowary/cassowary-tr.pdf).
 
+## Remarks
+
+Symbols/references to variables are represented as unsigned 32-bit integers. The first two bits of a symbol denote the symbols type, with the rest of the bits denoting the symbols ID.
+
+A symbol with an ID of zero is marked to be invalid. As a result, a program at any given moment in time may only generate at most 2^30 - 1 symbols, or 1,073,741,824 symbols.
+
+This was done for performance reasons to minimize memory usage and reduce the number of cycles needed to perform some operations.
+
+If you need this restriction lifted for a particular reason or use case, please open up a Github issue.
+
 ## Example
 
 ```go
