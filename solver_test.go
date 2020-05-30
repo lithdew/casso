@@ -7,14 +7,15 @@ import (
 )
 
 func TestConstraint(t *testing.T) {
-	s := casso.NewSolver()
-	l := s.New()
-	m := s.New()
-	r := s.New()
+	l := casso.New()
+	m := casso.New()
+	r := casso.New()
 
 	a := casso.NewConstraint(casso.EQ, 0, r.T(1), l.T(1), m.T(-2))
 	b := casso.NewConstraint(casso.GTE, -100, r.T(1), l.T(-1))
 	c := casso.NewConstraint(casso.GTE, 0, l.T(1))
+
+	s := casso.NewSolver()
 
 	_, err := s.AddConstraint(a)
 	require.NoError(t, err)
@@ -31,12 +32,13 @@ func TestConstraint(t *testing.T) {
 }
 
 func TestRemoveConstraint(t *testing.T) {
-	s := casso.NewSolver()
-	l := s.New()
-	r := s.New()
+	l := casso.New()
+	r := casso.New()
 
 	c1 := casso.NewConstraint(casso.GTE, -200, r.T(1), l.T(-1))
 	c2 := casso.NewConstraint(casso.GTE, 0, r.T(1), l.T(-1))
+
+	s := casso.NewSolver()
 
 	c1t, err := s.AddConstraint(c1)
 	require.NoError(t, err)
@@ -50,9 +52,9 @@ func TestRemoveConstraint(t *testing.T) {
 
 func TestEditableConstraint(t *testing.T) {
 	s := casso.NewSolver()
-	l := s.New()
-	m := s.New()
-	r := s.New()
+	l := casso.New()
+	m := casso.New()
+	r := casso.New()
 
 	a := casso.NewConstraint(casso.EQ, 0, r.T(1), l.T(1), m.T(-2))
 	b := casso.NewConstraint(casso.GTE, -100, r.T(1), l.T(-1))
@@ -80,11 +82,11 @@ func TestEditableConstraint(t *testing.T) {
 func TestConstraintRequiringArtificialVariable(t *testing.T) {
 	s := casso.NewSolver()
 
-	p1 := s.New()
-	p2 := s.New()
-	p3 := s.New()
+	p1 := casso.New()
+	p2 := casso.New()
+	p3 := casso.New()
 
-	container := s.New()
+	container := casso.New()
 
 	require.NoError(t, s.Edit(container, casso.Strong))
 	require.NoError(t, s.Suggest(container, 100.0))
@@ -115,10 +117,10 @@ func TestConstraintRequiringArtificialVariable(t *testing.T) {
 func TestPaddingUI(t *testing.T) {
 	s := casso.NewSolver()
 
-	sw := s.New() // screen width
-	sh := s.New() // screen height
+	sw := casso.New() // screen width
+	sh := casso.New() // screen height
 
-	padding := s.New() // padding
+	padding := casso.New() // padding
 
 	require.NoError(t, s.Edit(sw, casso.Strong))
 	require.NoError(t, s.Edit(sh, casso.Strong))
@@ -133,10 +135,10 @@ func TestPaddingUI(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	x := s.New()
-	y := s.New()
-	w := s.New()
-	h := s.New()
+	x := casso.New()
+	y := casso.New()
+	w := casso.New()
+	h := casso.New()
 
 	// x >= padding
 	// x + width + padding <= screen_width - 1
@@ -169,13 +171,13 @@ func TestPaddingUI(t *testing.T) {
 func TestComplexConstraints(t *testing.T) {
 	s := casso.NewSolver()
 
-	containerWidth := s.New()
+	containerWidth := casso.New()
 
-	childX := s.New()
-	childCompWidth := s.New()
+	childX := casso.New()
+	childCompWidth := casso.New()
 
-	child2X := s.New()
-	child2CompWidth := s.New()
+	child2X := casso.New()
+	child2CompWidth := casso.New()
 
 	c1 := casso.NewConstraint(casso.EQ, 0, childX.T(1.0), containerWidth.T(-50.0/1024))
 	c2 := casso.NewConstraint(casso.EQ, 0, childCompWidth.T(1.0), containerWidth.T(-200.0/1024))
@@ -218,12 +220,12 @@ func BenchmarkAddConstraint(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		s := casso.NewSolver()
-		l := s.New()
-		m := s.New()
-		r := s.New()
+		l := casso.New()
+		m := casso.New()
+		r := casso.New()
 		a := casso.NewConstraint(casso.EQ, 0, l.T(1), r.T(1), m.T(-2))
 		b := casso.NewConstraint(casso.GTE, -10, r.T(1), l.T(-1))
-		s.AddConstraint(a)
-		s.AddConstraint(b)
+		_, _ = s.AddConstraint(a)
+		_, _ = s.AddConstraint(b)
 	}
 }

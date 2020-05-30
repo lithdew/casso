@@ -1,32 +1,52 @@
 package casso
 
-type SymbolID int
-
-const InvalidSymbolID SymbolID = -1
-
-func (id SymbolID) T(coeff float64) Term { return Term{coeff: coeff, id: id} }
-
-func (id SymbolID) EQ(val float64) Constraint  { return NewConstraint(EQ, -val, id.T(1.0)) }
-func (id SymbolID) GTE(val float64) Constraint { return NewConstraint(GTE, -val, id.T(1.0)) }
-func (id SymbolID) LTE(val float64) Constraint { return NewConstraint(LTE, -val, id.T(1.0)) }
-
-type Priority int
+type symbolType int
 
 const (
-	Weak Priority = iota
-	Medium
-	Strong
-	Required
+	External symbolType = iota
+	Slack
+	Error
+	Dummy
 )
 
-var PriorityTable = [...]float64{
-	Weak:     1,
-	Medium:   1e3,
-	Strong:   1e6,
-	Required: 1e9,
+var SymbolTable = [...]string{
+	External: "External",
+	Slack:    "Slack",
+	Error:    "Error",
+	Dummy:    "Dummy",
 }
 
-func (p Priority) Val() float64 { return PriorityTable[p] }
+func (s symbolType) Restricted() bool { return s == Slack || s == Error }
+func (s symbolType) String() string   { return SymbolTable[s] }
+
+type Symbol struct {
+	typ symbolType
+}
+
+func New() *Symbol {
+	return &Symbol{typ: External}
+}
+
+func (id *Symbol) Restricted() bool { return id != nil && id.typ.Restricted() }
+func (id *Symbol) External() bool   { return id != nil && id.typ == External }
+func (id *Symbol) Slack() bool      { return id != nil && id.typ == Slack }
+func (id *Symbol) Error() bool      { return id != nil && id.typ == Error }
+func (id *Symbol) Dummy() bool      { return id != nil && id.typ == Dummy }
+
+func (id *Symbol) T(coeff float64) Term { return Term{coeff: coeff, id: id} }
+
+func (id *Symbol) EQ(val float64) Constraint  { return NewConstraint(EQ, -val, id.T(1.0)) }
+func (id *Symbol) GTE(val float64) Constraint { return NewConstraint(GTE, -val, id.T(1.0)) }
+func (id *Symbol) LTE(val float64) Constraint { return NewConstraint(LTE, -val, id.T(1.0)) }
+
+type Priority float64
+
+const (
+	Weak     Priority = 1
+	Medium            = 1e3 * Weak
+	Strong            = 1e3 * Medium
+	Required          = 1e3 * Strong
+)
 
 type Op int
 
@@ -44,25 +64,6 @@ var OpTable = [...]string{
 
 func (o Op) String() string { return OpTable[o] }
 
-type Symbol int
-
-const (
-	External Symbol = iota
-	Slack
-	Error
-	Dummy
-)
-
-var SymbolTable = [...]string{
-	External: "External",
-	Slack:    "Slack",
-	Error:    "Error",
-	Dummy:    "Dummy",
-}
-
-func (s Symbol) Restricted() bool { return s == Slack || s == Error }
-func (s Symbol) String() string   { return SymbolTable[s] }
-
 type Constraint struct {
 	op   Op
 	expr Expr
@@ -74,7 +75,7 @@ func NewConstraint(op Op, constant float64, terms ...Term) Constraint {
 
 type Term struct {
 	coeff float64
-	id    SymbolID
+	id    *Symbol
 }
 
 type Expr struct {
@@ -86,7 +87,7 @@ func NewExpr(constant float64, terms ...Term) Expr {
 	return Expr{constant: constant, terms: terms}
 }
 
-func (c Expr) find(id SymbolID) int {
+func (c Expr) find(id *Symbol) int {
 	for i := 0; i < len(c.terms); i++ {
 		if c.terms[i].id == id {
 			return i
@@ -100,7 +101,7 @@ func (c *Expr) delete(idx int) {
 	c.terms = c.terms[:len(c.terms)-1]
 }
 
-func (c *Expr) addSymbol(coeff float64, id SymbolID) {
+func (c *Expr) addSymbol(coeff float64, id *Symbol) {
 	idx := c.find(id)
 	if idx == -1 {
 		if !zero(coeff) {
@@ -128,12 +129,7 @@ func (c *Expr) negate() {
 	}
 }
 
-func (c *Expr) solveForSymbols(lhs, rhs SymbolID) {
-	c.addSymbol(-1.0, lhs)
-	c.solveFor(rhs)
-}
-
-func (c *Expr) solveFor(id SymbolID) {
+func (c *Expr) solveFor(id *Symbol) {
 	idx := c.find(id)
 	if idx == -1 {
 		return
@@ -151,7 +147,12 @@ func (c *Expr) solveFor(id SymbolID) {
 	}
 }
 
-func (c *Expr) substitute(id SymbolID, other Expr) {
+func (c *Expr) solveForSymbols(lhs, rhs *Symbol) {
+	c.addSymbol(-1.0, lhs)
+	c.solveFor(rhs)
+}
+
+func (c *Expr) substitute(id *Symbol, other Expr) {
 	idx := c.find(id)
 	if idx == -1 {
 		return

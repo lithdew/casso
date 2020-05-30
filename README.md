@@ -21,13 +21,13 @@ Paper written by Greg J. Badros, and Alan Borning. For more information, please 
 ```go
 s := casso.NewSolver()
 
-containerWidth := s.New()
+containerWidth := casso.New()
 
-childX := s.New()
-childCompWidth := s.New()
+childX := casso.New()
+childCompWidth := casso.New()
 
-child2X := s.New()
-child2CompWidth := s.New()
+child2X := casso.New()
+child2CompWidth := casso.New()
 
 // c1: childX == (50.0 / 1024) * containerWidth
 // c2: childCompWidth == (200.0 / 1024) * containerWidth
@@ -91,5 +91,5 @@ $ go test -bench=. -benchtime=10s
 goos: linux
 goarch: amd64
 pkg: github.com/lithdew/casso
-BenchmarkAddConstraint-8         4392736              2753 ns/op            1344 B/op         13 allocs/op
+BenchmarkAddConstraint-8         3694201              2892 ns/op            1208 B/op         16 allocs/op
 ```

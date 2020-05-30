@@ -7,9 +7,9 @@ import (
 )
 
 type Tag struct {
-	prio   Priority
-	marker SymbolID
-	other  SymbolID
+	priority Priority
+	marker   *Symbol
+	other    *Symbol
 }
 
 type Edit struct {
@@ -18,14 +18,11 @@ type Edit struct {
 }
 
 type Solver struct {
-	counter SymbolID
+	tabs  map[*Symbol]Constraint // symbol id -> constraint
+	edits map[*Symbol]Edit       // variable id -> value
+	tags  map[*Symbol]Tag        // marker id -> tag
 
-	symbols map[SymbolID]Symbol     // symbol id -> symbol type
-	edits   map[SymbolID]Edit       // variable id -> value
-	tabs    map[SymbolID]Constraint // symbol id -> constraint
-	tags    map[SymbolID]Tag        // marker id -> tag
-
-	infeasible []SymbolID
+	infeasible []*Symbol
 
 	objective  Expr
 	artificial Expr
@@ -33,18 +30,16 @@ type Solver struct {
 
 func NewSolver() *Solver {
 	return &Solver{
-		symbols: make(map[SymbolID]Symbol),
-		edits:   make(map[SymbolID]Edit),
-		tabs:    make(map[SymbolID]Constraint),
-		tags:    make(map[SymbolID]Tag),
+		tabs:  make(map[*Symbol]Constraint),
+		edits: make(map[*Symbol]Edit),
+		tags:  make(map[*Symbol]Tag),
 	}
 }
 
-func (s *Solver) New() SymbolID {
-	return s.new(External)
-}
-
-func (s *Solver) Val(id SymbolID) float64 {
+func (s *Solver) Val(id *Symbol) float64 {
+	if id == nil {
+		return 0
+	}
 	row, ok := s.tabs[id]
 	if !ok {
 		return 0
@@ -52,35 +47,12 @@ func (s *Solver) Val(id SymbolID) float64 {
 	return row.expr.constant
 }
 
-func (s *Solver) new(symbol Symbol) SymbolID {
-	id := s.counter
-	s.symbols[id] = symbol
-	s.counter++
-	return id
-}
-
-func (s *Solver) substitute(id SymbolID, expr Expr) {
-	for symbol := range s.tabs {
-		row := s.tabs[symbol]
-		row.expr.substitute(id, expr)
-		s.tabs[symbol] = row
-
-		if s.symbols[symbol] == External || row.expr.constant >= 0.0 {
-			continue
-		}
-
-		s.infeasible = append(s.infeasible, symbol)
-	}
-	s.objective.substitute(id, expr)
-	s.artificial.substitute(id, expr)
-}
-
-func (s *Solver) AddConstraint(cell Constraint) (SymbolID, error) {
+func (s *Solver) AddConstraint(cell Constraint) (*Symbol, error) {
 	return s.AddConstraintWithPriority(Required, cell)
 }
 
-func (s *Solver) AddConstraintWithPriority(prio Priority, cell Constraint) (SymbolID, error) {
-	tag := Tag{prio: prio, marker: InvalidSymbolID, other: InvalidSymbolID}
+func (s *Solver) AddConstraintWithPriority(priority Priority, cell Constraint) (*Symbol, error) {
+	tag := Tag{priority: priority}
 
 	c := cell
 	c.expr.terms = make([]Term, 0, len(c.expr.terms))
@@ -93,11 +65,9 @@ func (s *Solver) AddConstraintWithPriority(prio Priority, cell Constraint) (Symb
 		if zero(term.coeff) {
 			continue
 		}
-
-		if _, exists := s.symbols[term.id]; !exists {
-			return InvalidSymbolID, fmt.Errorf("referenced unknown symbol id %d", term.id)
+		if term.id == nil {
+			return nil, errors.New("symbol referenced in term is nil")
 		}
-
 		resolved, exists := s.tabs[term.id]
 		if !exists {
 			c.expr.addSymbol(term.coeff, term.id)
@@ -114,26 +84,27 @@ func (s *Solver) AddConstraintWithPriority(prio Priority, cell Constraint) (Symb
 		if c.op == GTE {
 			coeff = -1.0
 		}
-		tag.marker = s.new(Slack)
+
+		tag.marker = &Symbol{typ: Slack}
 		c.expr.addSymbol(coeff, tag.marker)
 
-		if prio < Required {
-			tag.other = s.new(Error)
+		if priority < Required {
+			tag.other = &Symbol{typ: Error}
 			c.expr.addSymbol(-coeff, tag.other)
-			s.objective.addSymbol(prio.Val(), tag.other)
+			s.objective.addSymbol(float64(priority), tag.other)
 		}
 	case EQ:
-		if prio < Required {
-			tag.marker = s.new(Error)
-			tag.other = s.new(Error)
+		if priority < Required {
+			tag.marker = &Symbol{typ: Error}
+			tag.other = &Symbol{typ: Error}
 
 			c.expr.addSymbol(-1.0, tag.marker)
 			c.expr.addSymbol(1.0, tag.other)
 
-			s.objective.addSymbol(prio.Val(), tag.marker)
-			s.objective.addSymbol(prio.Val(), tag.other)
+			s.objective.addSymbol(float64(priority), tag.marker)
+			s.objective.addSymbol(float64(priority), tag.other)
 		} else {
-			tag.marker = s.new(Dummy)
+			tag.marker = &Symbol{typ: Dummy}
 			c.expr.addSymbol(1.0, tag.marker)
 		}
 	}
@@ -146,11 +117,11 @@ func (s *Solver) AddConstraintWithPriority(prio Priority, cell Constraint) (Symb
 
 	subject, err := s.findSubject(c, tag)
 	if err != nil {
-		return InvalidSymbolID, err
+		return nil, err
 	}
 
-	if subject == -1 {
-		err := s.optimizeAgainstRow(c)
+	if subject == nil {
+		err := s.augmentArtificialVariable(c)
 		if err != nil {
 			return tag.marker, err
 		}
@@ -169,7 +140,7 @@ func (s *Solver) AddConstraintWithPriority(prio Priority, cell Constraint) (Symb
 	return tag.marker, s.optimizeAgainst(&s.objective)
 }
 
-func (s *Solver) RemoveConstraint(marker SymbolID) error {
+func (s *Solver) RemoveConstraint(marker *Symbol) error {
 	tag, exists := s.tags[marker]
 	if !exists {
 		return errors.New("tag is unregistered")
@@ -177,45 +148,48 @@ func (s *Solver) RemoveConstraint(marker SymbolID) error {
 
 	delete(s.tags, tag.marker)
 
-	if s.symbols[tag.marker] == Error {
+	if tag.marker.Error() {
 		row, exists := s.tabs[tag.marker]
 		if exists {
-			s.objective.addExpr(-tag.prio.Val(), row.expr)
+			s.objective.addExpr(float64(-tag.priority), row.expr)
 		} else {
-			s.objective.addSymbol(-tag.prio.Val(), tag.marker)
+			s.objective.addSymbol(float64(-tag.priority), tag.marker)
 		}
 	}
 
-	if s.symbols[tag.other] == Error {
+	if tag.other.Error() {
 		row, exists := s.tabs[tag.other]
 		if exists {
-			s.objective.addExpr(-tag.prio.Val(), row.expr)
+			s.objective.addExpr(float64(-tag.priority), row.expr)
 		} else {
-			s.objective.addSymbol(-tag.prio.Val(), tag.other)
+			s.objective.addSymbol(float64(-tag.priority), tag.other)
 		}
 	}
 
 	row, exists := s.tabs[tag.marker]
 	if !exists {
-		exit := InvalidSymbolID
-
 		r1 := math.MaxFloat64
 		r2 := math.MaxFloat64
 
-		first := InvalidSymbolID
-		second := InvalidSymbolID
-		third := InvalidSymbolID
+		var (
+			exit   *Symbol
+			first  *Symbol
+			second *Symbol
+			third  *Symbol
+		)
 
 		for symbol, row := range s.tabs {
 			idx := row.expr.find(tag.marker)
 			if idx == -1 {
 				continue
 			}
+
 			coeff := row.expr.terms[idx].coeff
 			if zero(coeff) {
 				continue
 			}
-			if s.symbols[symbol] == External {
+
+			if symbol.External() {
 				third = symbol
 			} else {
 				r := -row.expr.constant / coeff
@@ -230,9 +204,9 @@ func (s *Solver) RemoveConstraint(marker SymbolID) error {
 		}
 
 		switch {
-		case first != InvalidSymbolID:
+		case first != nil:
 			exit = first
-		case second != InvalidSymbolID:
+		case second != nil:
 			exit = second
 		default:
 			exit = third
@@ -240,7 +214,6 @@ func (s *Solver) RemoveConstraint(marker SymbolID) error {
 
 		row = s.tabs[exit]
 		delete(s.tabs, exit)
-		delete(s.symbols, exit)
 
 		row.expr.solveForSymbols(exit, tag.marker)
 		s.substitute(tag.marker, row.expr)
@@ -249,17 +222,16 @@ func (s *Solver) RemoveConstraint(marker SymbolID) error {
 	}
 
 	delete(s.tabs, tag.marker)
-	delete(s.symbols, tag.marker)
 
 	return s.optimizeAgainst(&s.objective)
 }
 
-func (s *Solver) Edit(id SymbolID, prio Priority) error {
-	if prio == Required {
-		return errors.New("editable variables are not allowed to be required")
+func (s *Solver) Edit(id *Symbol, priority Priority) error {
+	if priority < 0 || priority >= Required {
+		return errors.New("priority must be non-negative and not required for edit variables")
 	}
 	constraint := Constraint{op: EQ, expr: NewExpr(0.0, id.T(1.0))}
-	marker, err := s.AddConstraintWithPriority(prio, constraint)
+	marker, err := s.AddConstraintWithPriority(priority, constraint)
 	if err != nil {
 		return err
 	}
@@ -267,7 +239,7 @@ func (s *Solver) Edit(id SymbolID, prio Priority) error {
 	return nil
 }
 
-func (s *Solver) Suggest(id SymbolID, val float64) error {
+func (s *Solver) Suggest(id *Symbol, val float64) error {
 	edit, ok := s.edits[id]
 	if !ok {
 		return fmt.Errorf("symbol id %d is not registered as editable", id)
@@ -320,7 +292,7 @@ func (s *Solver) Suggest(id SymbolID, val float64) error {
 			continue
 		}
 
-		if s.symbols[symbol] == External {
+		if symbol.External() {
 			continue
 		}
 
@@ -334,21 +306,21 @@ func (s *Solver) Suggest(id SymbolID, val float64) error {
 // 1. be an external variable,
 // 2. be a negative slack/error variable, or
 // 3. be a dummy variable that has previously been cancelled out
-func (s *Solver) findSubject(cell Constraint, tag Tag) (SymbolID, error) {
+func (s *Solver) findSubject(cell Constraint, tag Tag) (*Symbol, error) {
 	for _, term := range cell.expr.terms {
-		if s.symbols[term.id] == External {
+		if term.id.External() {
 			return term.id, nil
 		}
 	}
 
-	if marker := s.symbols[tag.marker]; marker.Restricted() {
+	if tag.marker.Restricted() {
 		idx := cell.expr.find(tag.marker)
 		if idx != -1 && cell.expr.terms[idx].coeff < 0.0 {
 			return tag.marker, nil
 		}
 	}
 
-	if other := s.symbols[tag.other]; other.Restricted() {
+	if tag.other.Restricted() {
 		idx := cell.expr.find(tag.other)
 		if idx != -1 && cell.expr.terms[idx].coeff < 0.0 {
 			return tag.other, nil
@@ -356,38 +328,56 @@ func (s *Solver) findSubject(cell Constraint, tag Tag) (SymbolID, error) {
 	}
 
 	for _, term := range cell.expr.terms {
-		if s.symbols[term.id] != Dummy {
-			return InvalidSymbolID, nil
+		if !term.id.Dummy() {
+			return nil, nil
 		}
 	}
 
 	if !zero(cell.expr.constant) {
-		return InvalidSymbolID, errors.New("non-zero dummy variable: constraint is unsatisfiable")
+		return nil, errors.New("non-zero dummy variable: constraint is unsatisfiable")
 	}
 
 	return tag.marker, nil
 }
 
+func (s *Solver) substitute(id *Symbol, expr Expr) {
+	for symbol := range s.tabs {
+		row := s.tabs[symbol]
+		row.expr.substitute(id, expr)
+		s.tabs[symbol] = row
+
+		if symbol.External() || row.expr.constant >= 0.0 {
+			continue
+		}
+
+		s.infeasible = append(s.infeasible, symbol)
+	}
+	s.objective.substitute(id, expr)
+	s.artificial.substitute(id, expr)
+}
+
 func (s *Solver) optimizeAgainst(objective *Expr) error {
 	for {
-		entry := InvalidSymbolID
+		var (
+			entry *Symbol
+			exit  *Symbol
+		)
+
 		for _, term := range objective.terms {
-			if s.symbols[term.id] == Dummy || term.coeff >= 0.0 {
+			if term.id.Dummy() || term.coeff >= 0.0 {
 				continue
 			}
 			entry = term.id
 			break
 		}
-
-		if entry == InvalidSymbolID {
+		if entry == nil {
 			return nil
 		}
 
-		exit := InvalidSymbolID
 		ratio := math.MaxFloat64
 
 		for symbol := range s.tabs {
-			if s.symbols[symbol] == External {
+			if symbol.External() {
 				continue
 			}
 			idx := s.tabs[symbol].expr.find(entry)
@@ -406,7 +396,6 @@ func (s *Solver) optimizeAgainst(objective *Expr) error {
 
 		row := s.tabs[exit]
 		delete(s.tabs, exit)
-		delete(s.symbols, exit)
 
 		row.expr.solveForSymbols(exit, entry)
 
@@ -415,8 +404,8 @@ func (s *Solver) optimizeAgainst(objective *Expr) error {
 	}
 }
 
-func (s *Solver) optimizeAgainstRow(row Constraint) error {
-	id := s.new(Slack)
+func (s *Solver) augmentArtificialVariable(row Constraint) error {
+	id := &Symbol{typ: Slack}
 
 	s.tabs[id] = row
 	s.artificial = row.expr
@@ -432,22 +421,21 @@ func (s *Solver) optimizeAgainstRow(row Constraint) error {
 	artificial, ok := s.tabs[id]
 	if ok {
 		delete(s.tabs, id)
-		delete(s.symbols, id)
 
 		if len(artificial.expr.terms) == 0 {
 			return nil
 		}
 
-		entry := InvalidSymbolID
+		var entry *Symbol
+
 		for _, term := range artificial.expr.terms {
-			if !s.symbols[term.id].Restricted() {
+			if !term.id.Restricted() {
 				continue
 			}
 			entry = term.id
 			break
 		}
-
-		if entry == InvalidSymbolID {
+		if entry == nil {
 			return errors.New("unsatisfiable")
 		}
 
@@ -489,13 +477,12 @@ func (s *Solver) optimizeDualObjective() {
 		}
 
 		delete(s.tabs, exit)
-		delete(s.symbols, exit)
 
-		entry := InvalidSymbolID
+		var entry *Symbol
 		ratio := math.MaxFloat64
 
 		for _, term := range row.expr.terms {
-			if term.coeff <= 0.0 || s.symbols[term.id] == Dummy {
+			if term.coeff <= 0.0 || term.id.Dummy() {
 				continue
 			}
 			idx := s.objective.find(term.id)
