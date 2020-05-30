@@ -225,6 +225,9 @@ func (s *Solver) Edit(id Symbol, priority Priority) error {
 	if priority < 0 || priority >= Required {
 		return errors.New("priority must be non-negative and not required for edit variables")
 	}
+	if _, exists := s.edits[id]; exists {
+		return nil
+	}
 	constraint := Constraint{op: EQ, expr: NewExpr(0.0, id.T(1.0))}
 	marker, err := s.AddConstraintWithPriority(priority, constraint)
 	if err != nil {
