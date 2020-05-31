@@ -239,7 +239,7 @@ func (s *Solver) Edit(id Symbol, priority Priority) error {
 func (s *Solver) Suggest(id Symbol, val float64) error {
 	edit, ok := s.edits[id]
 	if !ok {
-		return ErrNotEditVariable
+		return ErrBadEditVariable
 	}
 
 	defer s.optimizeDualObjective()
