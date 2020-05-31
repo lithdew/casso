@@ -2,7 +2,6 @@ package casso
 
 import (
 	"errors"
-	"fmt"
 	"math"
 )
 
@@ -63,7 +62,7 @@ func (s *Solver) AddConstraintWithPriority(priority Priority, cell Constraint) (
 			continue
 		}
 		if term.id.Zero() {
-			return zero, errors.New("symbol referenced in term is nil")
+			return zero, ErrBadTermInConstraint
 		}
 		resolved, exists := s.tabs[term.id]
 		if !exists {
@@ -140,7 +139,7 @@ func (s *Solver) AddConstraintWithPriority(priority Priority, cell Constraint) (
 func (s *Solver) RemoveConstraint(marker Symbol) error {
 	tag, exists := s.tags[marker]
 	if !exists {
-		return errors.New("tag is unregistered")
+		return ErrBadConstraintMarker
 	}
 
 	delete(s.tags, tag.marker)
@@ -223,7 +222,7 @@ func (s *Solver) RemoveConstraint(marker Symbol) error {
 
 func (s *Solver) Edit(id Symbol, priority Priority) error {
 	if priority < 0 || priority >= Required {
-		return errors.New("priority must be non-negative and not required for edit variables")
+		return ErrBadPriority
 	}
 	if _, exists := s.edits[id]; exists {
 		return nil
@@ -240,7 +239,7 @@ func (s *Solver) Edit(id Symbol, priority Priority) error {
 func (s *Solver) Suggest(id Symbol, val float64) error {
 	edit, ok := s.edits[id]
 	if !ok {
-		return fmt.Errorf("symbol id %d is not registered as editable", id)
+		return ErrNotEditVariable
 	}
 
 	defer s.optimizeDualObjective()
@@ -332,7 +331,7 @@ func (s *Solver) findSubject(cell Constraint, tag Tag) (Symbol, error) {
 	}
 
 	if !eqz(cell.expr.constant) {
-		return zero, errors.New("non-zero dummy variable: constraint is unsatisfiable")
+		return zero, ErrBadDummyVariable
 	}
 
 	return tag.marker, nil
